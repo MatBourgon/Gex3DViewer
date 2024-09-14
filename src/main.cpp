@@ -271,11 +271,7 @@ void DrawLevel(sleveldata_t& leveldata, GLuint program)
     }
 }
 
-#if DEBUG
 int main()
-#else
-int __stdcall WinMain(void* hInstance, void* hPrevInstance, const char* pCmdLine, int nCmdShow)
-#endif
 {
 
     glfwInit();
