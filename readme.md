@@ -15,12 +15,5 @@ Ctrl+X: Toggle Wireframe
 - OFF: disable vertex colors and textures
 
 # Building
-This project is built using Premake and VCPKG (and thus with a bias for Windows and Visual Studio).
+This project is built using CMAKE.
 The project can be generated and re-generated with the provided batch file. C++20 is used.
-The required VCPKG packages are:
-- glfw:x86-windows
-- glm:x86-windows
-- imgui:x86-windows
-- imgui[glfw-binding]:x86-windows
-- imgui[opengl3-binding]:x86-windows
-- imgui[win32-binding]:x86-windows
