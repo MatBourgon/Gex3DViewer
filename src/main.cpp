@@ -127,6 +127,8 @@ bool texturesVis = true;
 bool vertexCols = true;
 bool noObjects = false;
 bool enableBillboarding = true;
+bool setTriggersVisible = false;
+bool showGoto = false;
 
 void SetWireframe(bool state)
 {
@@ -166,6 +168,10 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
     if (key == GLFW_KEY_X && action == GLFW_PRESS && (mods & GLFW_MOD_CONTROL))
     {
         SetWireframe(!wireframe);
+    }
+    else if (key == GLFW_KEY_G && action == GLFW_PRESS && (mods & GLFW_MOD_CONTROL))
+    {
+        showGoto = true;
     }
     else if (key == GLFW_KEY_C && action == GLFW_PRESS && (mods & GLFW_MOD_CONTROL))
     {
@@ -219,19 +225,27 @@ bool IsBillboardObject(const std::string& name)
         return true;
 
     const char* BillboardObjectNames[] = {
+        "remgold_",
+        "remsilv_",
+        "orb_____",
+
         "nflame__",
         "mflame__",
+        "xflame__",
+        "yflame__",
+        "hflame__",
         "magic___",
 
         "invis___",
 
         "charger_",
         "steam___",
+        "jsteam__",
 
         "cold____",
 
         "proxsig_",
-        "@Path",
+        "@CameraTarget",
 
         /// COLLECTIBLES
         // Aztec 2 Step
@@ -351,7 +365,7 @@ void CloseLevel(sleveldata_t& leveldata)
             delete[] tex.pixels;
     leveldata.level.textures.clear();
     leveldata.level.models.clear();
-    leveldata.level.paths.clear();
+    leveldata.level.signals.clear();
     leveldata.open = false;
     mdls.clear();
 }
@@ -362,11 +376,16 @@ std::shared_ptr<globj_t> createobj(std::shared_ptr<Model> model)
 
     for (auto& p : model->polygons)
     {
+        if (p.materialID == 0xFFFF'FFFF)
+            continue;
+
         for (int i = 0; i < 3; ++i)
         {
             auto& v = model->vertices[p.vertex[i]];
+
             ptr->vertices.push_back({ {v.x / 1000.f, v.y / 1000.f, v.z / 1000.f}, {v.r / 255.f, v.g / 255.f, v.b / 255.f, v.a / 255.f}, p.uvs[i] });
             if (p.materialID == 0xFFFF'FFFF)
+            {
                 if ((p.flags & 0x2) == 0 && model->name != "@Level")
                 {
                     auto& c = ptr->vertices.back().color;
@@ -383,6 +402,20 @@ std::shared_ptr<globj_t> createobj(std::shared_ptr<Model> model)
                 }
                 else
                     ptr->vertices.back().color.a = 0.f;
+            }
+            else if (p.isTrigger)
+            {
+                auto& c = ptr->vertices.back().color;
+                if (setTriggersVisible)
+                {
+                    c.r = c.b = c.a = 1.f;
+                    c.g = 0.f;
+                }
+                else
+                {
+                    c.a = 0.f;
+                }
+            }
         }
     }
 
@@ -444,6 +477,13 @@ bool OpenLevel(const char* levelPath, sleveldata_t& leveldata)
     bgColor.x = leveldata.level.bgColor[0];
     bgColor.y = leveldata.level.bgColor[1];
     bgColor.z = leveldata.level.bgColor[2];
+
+    if (auto it = std::find_if(leveldata.level.models.begin(), leveldata.level.models.end(),
+        [](std::shared_ptr<Model> m) {return m->name == "$Spawn"; });
+        it != leveldata.level.models.end())
+    {
+        g_CamPos = -(*it)->instances[0].position + glm::vec3{ 0.f, 1.f, 0.f };
+    }
 
     for (auto& m : leveldata.level.models)
         mdls.push_back(createobj(m));
@@ -616,6 +656,7 @@ int main()
             ImGui::Checkbox("Toggle Textures?", &texturesVis);
             ImGui::Checkbox("Toggle Objects?", &noObjects);
             ImGui::Checkbox("Toggle Billboarding?", &enableBillboarding);
+            ImGui::Checkbox("Enable Triggers (On Load)?", &setTriggersVisible);
             if (ImGui_CenteredButton("Open Level (*.dfx)"))
             {
                 auto path = OpenLoadPrompt("Gex 3D Level File (*.dfx)\0*.dfx\0All files (*.*)\0*.*\0");
@@ -637,6 +678,28 @@ int main()
             {
                 g_CamPos = { 0, 0, 0 };
                 g_CamRot = { 0, 0 };
+            }
+
+            ImGui::SameLine();
+            static bool __showsignals = false;
+            if (ImGui::Button("Show Signals"))
+            {
+                __showsignals = true;
+            }
+            if (__showsignals)
+            {
+                ImGui::SetNextWindowSize({ 1024, 720 }, ImGuiCond_Once);
+                ImGui::Begin("Signals", &__showsignals, ImGuiWindowFlags_NoCollapse);
+                for (auto& s : leveldata.level.signals)
+                {
+                    ImGui::Text(("Signal 0x" + Hexify(s.first)).c_str());
+                    for (auto& c : s.second.commands)
+                    {
+                        ImGui::Text(c.c_str());
+                    }
+                    ImGui::Separator();
+                }
+                ImGui::End();
             }
 
             ImGui::Spacing();
@@ -843,6 +906,26 @@ int main()
             }
         }
 
+        if (showGoto)
+        {
+            int w, h;
+            glfwGetWindowSize(g_Window, &w, &h);
+            ImGui::SetNextWindowPos({ w / 2.f-128, h / 2.f-40 });
+            ImGui::SetNextWindowSize({ 256, 80 });
+            ImGui::Begin("Goto...", &showGoto, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+            static int _[3];
+            ImGui::SetCursorPosX(48);
+            ImGui::InputInt3("##GotoLabel", _, ImGuiInputTextFlags_CharsDecimal);
+            ImGui::SetCursorPosX(98);
+            if (ImGui::Button("Teleport##Goto"))
+            {
+                showGoto = false;
+                g_CamPos = glm::vec3{ _[0] * 0.001f, _[1] * 0.001f, _[2] * -0.001f };
+            }
+
+            ImGui::End();
+        }
+
         if (toggleObjectsMenu)
         {
             ImGui::SetNextWindowSize({ 512, 512 }, ImGuiCond_Appearing);
@@ -970,6 +1053,7 @@ int main()
                             }
                             for (auto& c : inst.components)
                                 c->RenderGUI(leveldata.level, (void*)leveldata.texid);
+                            ImGui::Text("Flags: (%x)", inst.flags);
                             ImGui::Text("Instance Data:\n");
                             for (int i = 0; i < 16; ++i)
                             {
@@ -1026,79 +1110,64 @@ int main()
 
 void DumpObjects(FILE* f, sleveldata_t& leveldata)
 {
-    fwrite("{\n", 2, 1, f);
-    char buffer[1024];
-    sprintf_s(buffer, "\t\"raw_objects\": {\n");
-    fwrite(buffer, strnlen(buffer, 1024), 1, f);
+    std::stringstream ss;
+    ss << "{\n\t\"raw_objects\": {\n";
     for (size_t i = 0; i < leveldata.level.models.size(); ++i)
     {
         auto& mdl = leveldata.level.models[i];
-        std::string objName = mdl->name.c_str();
-        if (objName.empty())
-        {
-            if (mdl->addr == 0xFFFF'FFFF)
-                objName = "Level";
-            else
-                objName = "???";
-        }
-        sprintf_s(buffer, "\t\t\"%s\": [\n", objName.c_str());
-        fwrite(buffer, strnlen(buffer, 1024), 1, f);
+        if (mdl->name.starts_with("@Path-"))
+            continue;
+
+        ss << "\t\t\"" << mdl->name << "\": [\n";
         for (size_t j = 0; j < mdl->instances.size(); ++j)
         {
             auto& inst = mdl->instances[j];
-            sprintf_s(buffer, "\t\t\t{ \"pos\": [%d, %d, %d], \"rot\": [%.6f, %.6f, %.6f] }",
-                (int)(inst.position.x * -1000),
-                (int)(inst.position.y * -1000),
-                (int)(inst.position.z * 1000),
-                (inst.rotation.x),
-                (inst.rotation.y),
-                (inst.rotation.z)
-            );
-            fwrite(buffer, strnlen(buffer, 1024), 1, f);
+            ss << "\t\t\t{ \"pos\": ["
+                << std::to_string((int)(inst.position.x * -1000)) << ", "
+                << std::to_string((int)(inst.position.y * -1000)) << ", "
+                << std::to_string((int)(inst.position.z * 1000)) << "], \"rot\": ["
+                << std::to_string(inst.rotation.x) << ", "
+                << std::to_string(inst.rotation.y) << ", "
+                << std::to_string(inst.rotation.z) << " ]";
+
+            if (!inst.components.empty())
+            {
+                ss << ", \"components\": [\n";
+                for (size_t i = 0; i < inst.components.size(); ++i)
+                {
+                    ss << "\t\t\t\t\t";
+                    inst.components[i]->ExportData(ss);
+                    if ((i + 1) < (inst.components.size()))
+                    {
+                        ss << ",";
+                    }
+                    ss << "\n";
+                }
+                ss << "\t\t\t\t]\n\t\t\t";
+            }
+
+            ss << "}";
             if ((j + 1) < mdl->instances.size())
-                fwrite(",\n", 2, 1, f);
+                ss << ",\n";
         }
-        fwrite("\n\t\t]", 4, 1, f);
+        ss << "\n\t\t]";
         if ((i + 1) < leveldata.level.models.size())
-            fwrite(",\n", 2, 1, f);
+            ss << ",\n";
     }
-    fwrite("\n\t},\n", 4, 1, f);
-    fwrite("\"paths\": [", 10, 1, f);
-    std::string pstr;
-    for (auto& path : leveldata.level.paths)
-    {
-        pstr += "\n\t\t{\n\t\t\t\"owner_instance\": " + std::to_string(path.owner);
-        pstr += ",\n\t\t\t\"points\": [";
-        for (auto& pt : path.points)
-        {
-            sprintf_s(buffer, "\n\t\t\t\t{\"speed\":%d, \"pos\": [%d, %d, %d]},", pt.speed, pt.x, pt.z, pt.y);
-            pstr += buffer;
-        }
-        if (pstr.back() == ',')
-            pstr.pop_back();
-        pstr += "\n\t\t\t],\n\t\t\t\"rotations\":[";
-        for (auto& pt : path.rotations)
-        {
-            sprintf_s(buffer, "\n\t\t\t\t{\"speed\":%d, \"rot\": [%f, %f, %f, %f]},", pt.speed, pt.rotX, pt.rotY, pt.rotZ, pt.rotW);
-            pstr += buffer;
-        }
-        if (pstr.back() == ',')
-            pstr.pop_back();
-        pstr += "\n\t\t\t]\n\t\t},";
-    }
-    if (pstr.back() == ',')
-        pstr.pop_back();
-    fwrite(pstr.data(), pstr.length(), 1, f);
-    fwrite("\n\t],\n", 5, 1, f);
-    fwrite("\t\"pickups\": [", 13, 1, f);
+
+    ss << "\n\t},\n\t\"pickups\": [";
 
     for (int i = 0; i < 3; ++i)
     {
         const char* const p = leveldata.level.pickupName[i];
-        if (strncmp(p, "gameboy_", 8) == 0 || strncmp(p, "remgold_", 8) == 0)
-            continue; // not real collectibles
+        if (strncmp(p, "gameboy_", 8) == 0)
+        {
+            // not real collectible
+            ss << "\n\t\t{\n\t\t\t\"type\": \"\", \"instances\":[]\n\t\t},";
+            continue;
+        }
 
-        std::string s = "\n\t\t{\n\t\t\t\"type\": \"" + std::string(p) + "\", \"instances\": [";
+        ss << "\n\t\t{\n\t\t\t\"type\": \"" << p << "\", \"instances\": [";
         if (auto it = std::find_if(
             leveldata.level.models.begin(),
             leveldata.level.models.end(),
@@ -1107,25 +1176,23 @@ void DumpObjects(FILE* f, sleveldata_t& leveldata)
                 return m->name == p;
             });
             it != leveldata.level.models.end()
-                )
+        )
         {
             for (auto& inst : (*it)->instances)
             {
-                sprintf_s(buffer, "\n\t\t\t\t[%d, %d, %d],",
-                    (int)(inst.position.x * -1000),
-                    (int)(inst.position.y * -1000),
-                    (int)(inst.position.z * 1000));
-                s += buffer;
+                ss << "\n\t\t\t\t["
+                    << std::to_string((int)(inst.position.x * -1000)) << ", "
+                    << std::to_string((int)(inst.position.y * -1000)) << ", "
+                    << std::to_string((int)(inst.position.z * 1000)) << "],";
             }
             if ((*it)->instances.size() > 0)
-                s.pop_back();
+                ss.seekp(-1, std::ios_base::end);
         }
-        s += "\n\t\t\t]\n\t\t},";
-        fwrite(s.data(), s.length(), 1, f);
+        ss << "\n\t\t\t]\n\t\t},";
     }
 
     {
-        std::string s = "\n\t\t{\n\t\t\t\"type\": \"cold____\", \"instances\": [";
+        ss << "\n\t\t{\n\t\t\t\"type\": \"cold____\", \"instances\": [";
         if (auto it = std::find_if(
             leveldata.level.models.begin(),
             leveldata.level.models.end(),
@@ -1134,25 +1201,24 @@ void DumpObjects(FILE* f, sleveldata_t& leveldata)
                 return m->name == "cold____";
             });
             it != leveldata.level.models.end()
-                )
+        )
         {
             for (auto& inst : (*it)->instances)
             {
-                sprintf_s(buffer, "\n\t\t\t\t[%d, %d, %d],",
-                    (int)(inst.position.x * -1000),
-                    (int)(inst.position.y * -1000),
-                    (int)(inst.position.z * 1000));
-                s += buffer;
+                ss << "\n\t\t\t\t["
+                    << std::to_string((int)(inst.position.x * -1000)) << ", "
+                    << std::to_string((int)(inst.position.y * -1000)) << ", "
+                    << std::to_string((int)(inst.position.z * 1000)) << "],";
             }
             if ((*it)->instances.size() > 0)
-                s.pop_back();
+                ss.seekp(-1, std::ios_base::end);
         }
-        s += "\n\t\t\t]\n\t\t}";
-        fwrite(s.data(), s.length(), 1, f);
+        ss << "\n\t\t\t]\n\t\t}";
     }
 
-    fwrite("\n\t]", 3, 1, f);
-    fwrite("\n}", 2, 1, f);
+    ss << "\n\t]\n}";
+    const std::string fileStr = ss.str();
+    fwrite(fileStr.data(), fileStr.length(), 1, f);
     fclose(f);
 }
 

@@ -2,7 +2,13 @@ cmake_minimum_required(VERSION 3.12) # 3.12 required for CONFIGURE_DEPENDS
 project("Gex 2 Level Viewer")
 
 # Main Project Source Files
-file(GLOB g2viewer_SRC CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h" "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+file(GLOB g2viewer_SRC CONFIGURE_DEPENDS
+	"${CMAKE_CURRENT_SOURCE_DIR}/src/*.h" "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+	"${CMAKE_CURRENT_SOURCE_DIR}/src/components/*.h" "${CMAKE_CURRENT_SOURCE_DIR}/src/components/*.cpp"
+)
+
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/src" FILES ${g2viewer_SRC})
 
 # Imgui Source files
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include/imgui)

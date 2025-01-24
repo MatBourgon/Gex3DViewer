@@ -6,7 +6,9 @@
 
 char* ReadShaderFile(const char* filepath)
 {
-    if (FILE* file = fopen(filepath, "rb"))
+    FILE* file = NULL;
+    fopen_s(&file, filepath, "rb");
+    if (file)
     {
         fseek(file, 0, SEEK_END);
         size_t sz = ftell(file);
