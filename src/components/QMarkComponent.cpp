@@ -1,4 +1,5 @@
 #include "QMarkComponent.h"
+#include "../json.h"
 
 #include <imgui/imgui.h>
 
@@ -31,23 +32,21 @@ void QMarkComponent::ParseData(file_t& file, level_t& level, unsigned int data)
 	file.pop();
 }
 
-void QMarkComponent::ExportData(std::stringstream& ss)
+void QMarkComponent::ExportData(JSON& object)
 {
-	ss << "{ \"component_type\": \"qmark\", \"box\": ["
-		<< std::to_string(x) << ", "
-		<< std::to_string(y) << ", "
-		<< std::to_string(w) << ", "
-		<< std::to_string(h) << "]";
-	ss << ", \"length\": " << std::to_string(length) << ", \"messages\": [";
-	for (size_t i = 0; i < entries.size(); ++i)
+	object["component_type"] = "qmark";
+	object["box"] = { x, y, w, h };
+	object["length"] = length;
+	object["messages"] = JSON::Array();
+
+	for (auto& e : entries)
 	{
-		ss << " { \"x\": " << std::to_string(entries[i].xPos);
-		ss << ", \"y\": " << std::to_string(entries[i].yPos);
-		ss << ", \"text\": \"" << entries[i].messageRaw << "\" }";
-		if ((i + 1) < entries.size())
-			ss << ", ";
+		JSON jo;
+		jo["x"] = e.xPos;
+		jo["y"] = e.yPos;
+		jo["text"] = e.messageRaw;
+		object["messages"].push_back(jo);
 	}
-	ss << " ] }";
 }
 
 void QMarkComponent::RenderGUI(level_t& level, void* textureSheet)

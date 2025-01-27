@@ -28,12 +28,27 @@ struct objinstance_t
 	unsigned int flags = 0;
 	unsigned int instanceData[4] = { 0 };
 
+
+	glm::vec3 oposition{ 0, 0, 0 };
+	glm::vec3 orotation{ 0, 0, 0 };
+
 	std::vector<std::unique_ptr<IComponent>> components;
 	template<typename T>
 	T& AddComponent()
 	{
 		components.push_back(std::make_unique<T>());
 		return *(T*)components.back().get();
+	}
+	template<typename T>
+	T* GetComponent()
+	{
+		for (auto& c : components)
+		{
+			if (auto p = dynamic_cast<T*>(c.get()))
+				return p;
+		}
+
+		return nullptr;
 	}
 };
 

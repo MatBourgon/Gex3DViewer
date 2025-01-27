@@ -1,6 +1,7 @@
 #include "PathComponent.h"
 
 #include "../level.h"
+#include "../json.h"
 
 #include <glm/ext/scalar_constants.hpp>
 
@@ -39,7 +40,6 @@ void ReadMovingPlatform(Path& path, file_t& dfx, level_t& level, addr_t ownerAdd
 		dfx.seek(rotationAddr, true);
 		u16 nRots = dfx.Read<u16>(4);
 		dfx.seek(dfx.Read<addr_t>(0), true);
-		constexpr float c_PI_2_FROM_1024 = glm::pi<float>() / 2048.f;
 		for (u16 i = 0; i < nRots; ++i)
 		{
 			path.rotations.push_back({
@@ -77,40 +77,40 @@ void PathComponent::ParseData(file_t& file, level_t& level, unsigned int data)
 	ReadMovingPlatform(path, file, level, data, data);
 }
 
-void PathComponent::ExportData(std::stringstream& ss)
+void PathComponent::ExportData(JSON& object)
 {
-	ss << "{ \"component_type\": \"spline\", ";
-	ss << "\"translations\":[";
+	object["component_type"] = "spline";
+
+	object["translations"] = JSON::Array();
 	for (auto& pt : path.translations)
 	{
-		ss << " {\"speed\": " << std::to_string(pt.speed) << ", \"pos\": ["
-			<< std::to_string(pt.x) << ", "
-			<< std::to_string(pt.y) << ", "
-			<< std::to_string(pt.z) << "]},";
+		JSON jo;
+		jo["speed"] = pt.speed;
+		jo["pos"] = {
+			pt.x, pt.y, pt.z
+		};
+		object["translations"].push_back(jo);
 	}
-	if (path.translations.size() > 0)
-		ss.seekp(-1, std::ios_base::end);
-	ss << "], \"rotations\":[";
+
+	object["rotations"] = JSON::Array();
 	for (auto& pt : path.rotations)
 	{
-		ss << " {\"speed\": " << std::to_string(pt.speed) << ", \"rot\": ["
-			<< std::to_string(pt.rotX) << ", "
-			<< std::to_string(pt.rotY) << ", "
-			<< std::to_string(pt.rotZ) << ", "
-			<< std::to_string(pt.rotW) << "]},";
+		JSON jo;
+		jo["speed"] = pt.speed;
+		jo["rot"] = {
+			pt.rotX, pt.rotY, pt.rotZ, pt.rotW
+		};
+		object["rotations"].push_back(jo);
 	}
-	if (path.rotations.size() > 0)
-		ss.seekp(-1, std::ios_base::end);
-	ss << "], \"scalars\":[";
-	for (auto& pt : path.scalars)
-	{
-		ss << " {\"speed\": " << std::to_string(pt.speed) << ", \"scale\": ["
-			<< std::to_string(pt.x / 4096.f) << ", "
-			<< std::to_string(pt.y / 4096.f) << ", "
-			<< std::to_string(pt.z / 4096.f) << "]},";
-	}
-	if (path.scalars.size() > 0)
-		ss.seekp(-1, std::ios_base::end);
-	ss << "] }";
 
+	object["scalars"] = JSON::Array();
+	for (auto& pt : path.translations)
+	{
+		JSON jo;
+		jo["speed"] = pt.speed;
+		jo["scale"] = {
+			pt.x, pt.y, pt.z
+		};
+		object["scalars"].push_back(jo);
+	}
 }

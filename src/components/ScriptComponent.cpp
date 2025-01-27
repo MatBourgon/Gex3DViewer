@@ -1,5 +1,6 @@
 #include "ScriptComponent.h"
 #include "../script.h"
+#include "../json.h"
 
 #include <imgui/imgui.h>
 
@@ -15,9 +16,9 @@ void ScriptComponent::ParseData(file_t& file, level_t& level, unsigned int data)
 	}
 }
 
-void ScriptComponent::ExportData(std::stringstream& ss)
+void ScriptComponent::ExportData(JSON& object)
 {
-	ss << "{ \"component_type\": \"script\" }"; // todo: add script
+	object["component_type"] = "script"; // todo: add script
 }
 
 void ScriptComponent::RenderGUI(level_t& level, void* textureSheet)

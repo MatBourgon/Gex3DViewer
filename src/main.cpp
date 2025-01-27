@@ -1,5 +1,6 @@
 #include "shader.h"
 #include "mapreader.h"
+#include "json.h"
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -129,6 +130,18 @@ bool noObjects = false;
 bool enableBillboarding = true;
 bool setTriggersVisible = false;
 bool showGoto = false;
+bool showModelViewer = false;
+int modelListingIndex = 0;
+
+char* CreateDynamicCStr(const std::string& s)
+{
+    char* c = new char[s.length() + 1];
+    memcpy(c, s.data(), s.length());
+    c[s.length()] = '\0';
+    return c;
+}
+
+std::vector<char*> modelListing = { CreateDynamicCStr("Everything") };
 
 void SetWireframe(bool state)
 {
@@ -225,8 +238,6 @@ bool IsBillboardObject(const std::string& name)
         return true;
 
     const char* BillboardObjectNames[] = {
-        "remgold_",
-        "remsilv_",
         "orb_____",
 
         "nflame__",
@@ -334,9 +345,9 @@ struct globj_t
         }
         else
         {
-            //Model = glm::rotate(Model, -inst.rotation.x, { 1, 0, 0 });
+            Model = glm::rotate(Model, -inst.rotation.x, { 1, 0, 0 });
+            Model = glm::rotate(Model, -inst.rotation.z, { 0, 0, 1 });
             Model = glm::rotate(Model, -inst.rotation.y, { 0, 1, 0 });
-            //Model = glm::rotate(Model, -inst.rotation.z, { 0, 0, 1 });
         }
         glm::mat4 cam = camera(Model);
         glUniformMatrix4fv(glGetUniformLocation(program, "uCamera"), 1, false, glm::value_ptr(cam));
@@ -367,6 +378,11 @@ void CloseLevel(sleveldata_t& leveldata)
     leveldata.level.models.clear();
     leveldata.level.signals.clear();
     leveldata.open = false;
+    for (auto& o : modelListing)
+        delete[] o;
+    modelListing.clear();
+    modelListing.push_back(CreateDynamicCStr("Everything"));
+    modelListingIndex = 0;
     mdls.clear();
 }
 
@@ -376,8 +392,8 @@ std::shared_ptr<globj_t> createobj(std::shared_ptr<Model> model)
 
     for (auto& p : model->polygons)
     {
-        if (p.materialID == 0xFFFF'FFFF)
-            continue;
+        //if (p.materialID == 0xFFFF'FFFF)
+        //    continue;
 
         for (int i = 0; i < 3; ++i)
         {
@@ -478,6 +494,9 @@ bool OpenLevel(const char* levelPath, sleveldata_t& leveldata)
     bgColor.y = leveldata.level.bgColor[1];
     bgColor.z = leveldata.level.bgColor[2];
 
+    for (auto& o : leveldata.level.models)
+        modelListing.push_back(CreateDynamicCStr(o->name));
+
     if (auto it = std::find_if(leveldata.level.models.begin(), leveldata.level.models.end(),
         [](std::shared_ptr<Model> m) {return m->name == "$Spawn"; });
         it != leveldata.level.models.end())
@@ -532,7 +551,7 @@ bool ImGui_CenteredButton(const char* label)
     return ImGui::Button(label);
 };
 
-void DumpObjects(FILE* f, sleveldata_t& leveldata);
+void DumpObjects(const std::string& path, sleveldata_t& leveldata);
 void ExportModel(FILE* f, std::shared_ptr<Model> mdl);
 void ExportTextureSheet(FILE* f, sleveldata_t& leveldata);
 
@@ -577,6 +596,8 @@ int main()
 
     bool toggleObjectsMenu = false;
 
+    float time = 0;
+
     while(!glfwWindowShouldClose(g_Window))
     {
         glfwPollEvents();
@@ -590,7 +611,10 @@ int main()
             glClearColor(bgColor.x, bgColor.y, bgColor.z, 1.f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glEnable(GL_DEPTH_TEST);
-        glEnable(GL_CULL_FACE);
+        if (modelListingIndex == 0)
+            glEnable(GL_CULL_FACE);
+        else
+            glDisable(GL_CULL_FACE);
 
         // transparent textures bugged rn
         //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -617,16 +641,42 @@ int main()
         ImGui_ImplOpenGL3_NewFrame();
         ImGui::NewFrame();
 
-        for (size_t i = 0; i < leveldata.level.models.size(); ++i)
+        time += 1 / 60.f;
+
+        if (modelListingIndex == 0)
         {
-            if (leveldata.level.models[i]->objectVisibility)
-                for (auto& inst : leveldata.level.models[i]->instances)
-                {
-                    if (inst.isVisible)
-                        mdls[i]->draw(program, leveldata, inst, leveldata.level.models[i]->name);
-                }
-            if (noObjects)
-                break;
+            for (size_t i = 0; i < leveldata.level.models.size(); ++i)
+            {
+                if (leveldata.level.models[i]->objectVisibility)
+                    for (auto& inst : leveldata.level.models[i]->instances)
+                    {
+                        if (inst.isVisible)
+                        {
+                            if (leveldata.level.models[i]->name == "qmark___"
+                                || leveldata.level.models[i]->name == "dish____"
+                                || leveldata.level.models[i]->name == "satdish_")
+                            {
+                                inst.rotation.y -= glm::pi<float>() / 180.f;
+                            }
+                            else if (leveldata.level.models[i]->name == "remrlow_"
+                                || leveldata.level.models[i]->name == "remsilv_"
+                                || leveldata.level.models[i]->name == "remgold_"
+                                || leveldata.level.models[i]->name.find("plaq") != std::string::npos)
+                            {
+                                inst.rotation.y += glm::pi<float>() / 180.f;
+                                inst.position.y = inst.oposition.y + sinf(time) / 25.f;
+                            }
+                            mdls[i]->draw(program, leveldata, inst, leveldata.level.models[i]->name);
+                        }
+                    }
+                if (noObjects)
+                    break;
+            }
+        }
+        else
+        {
+            static objinstance_t _{ {0, 0, 0}, {0, 0, 0} };
+            mdls[modelListingIndex - 1]->draw(program, leveldata, _, leveldata.level.models[modelListingIndex - 1]->name);
         }
 
         ImGui::SetNextWindowPos({ 0, 0 });
@@ -952,11 +1002,13 @@ int main()
                     {
                         if (!str_ends_with_nocase(path, ".json"))
                             path += ".json";
-                        FILE* f = NULL;
-                        fopen_s(&f, path.c_str(), "w");
-                        if (f)
-                            DumpObjects(f, leveldata);
+                        DumpObjects(path, leveldata);
                     }
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Open Model Viewer"))
+                {
+                    showModelViewer = true;
                 }
                 static char filterTextBuffer[32] = "!!";
                 static std::string filterText = "!!";
@@ -1086,6 +1138,18 @@ int main()
             }
         }
 
+        ImGui::SetNextWindowPos({ 400, 200 }, ImGuiCond_Once);
+        ImGui::SetNextWindowSize({ 200, 200 }, ImGuiCond_Once);
+        if (showModelViewer)
+        {
+            if (ImGui::Begin("Object Viewer", &showModelViewer))
+            {
+                ImGui::Text("Viewing Object:");
+                ImGui::Combo("##Object Viewer", &modelListingIndex, modelListing.data(), modelListing.size());
+                ImGui::End();
+            }
+        }
+
         ImGui::Render();
         if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
         {
@@ -1108,66 +1172,56 @@ int main()
     return 0;
 }
 
-void DumpObjects(FILE* f, sleveldata_t& leveldata)
+void DumpObjects(const std::string& path, sleveldata_t& leveldata)
 {
-    std::stringstream ss;
-    ss << "{\n\t\"raw_objects\": {\n";
-    for (size_t i = 0; i < leveldata.level.models.size(); ++i)
+    JSON root;
+    auto& ro = root["raw_objects"];
+    for (auto& mdl : leveldata.level.models)
     {
-        auto& mdl = leveldata.level.models[i];
-        if (mdl->name.starts_with("@Path-"))
-            continue;
-
-        ss << "\t\t\"" << mdl->name << "\": [\n";
-        for (size_t j = 0; j < mdl->instances.size(); ++j)
+        auto& mdlo = ro[mdl->name];
+        for (auto& inst : mdl->instances)
         {
-            auto& inst = mdl->instances[j];
-            ss << "\t\t\t{ \"pos\": ["
-                << std::to_string((int)(inst.position.x * -1000)) << ", "
-                << std::to_string((int)(inst.position.y * -1000)) << ", "
-                << std::to_string((int)(inst.position.z * 1000)) << "], \"rot\": ["
-                << std::to_string(inst.rotation.x) << ", "
-                << std::to_string(inst.rotation.y) << ", "
-                << std::to_string(inst.rotation.z) << " ]";
+            JSON insto;
+            insto["pos"] = {
+                inst.position.x * -1000,
+                inst.position.y * -1000,
+                inst.position.z * 1000,
+            };
+
+            insto["rot"] = {
+                inst.rotation.x,
+                inst.rotation.y,
+                inst.rotation.z,
+            };
 
             if (!inst.components.empty())
             {
-                ss << ", \"components\": [\n";
-                for (size_t i = 0; i < inst.components.size(); ++i)
+                auto& comp = insto["components"];
+                for (auto& c : inst.components)
                 {
-                    ss << "\t\t\t\t\t";
-                    inst.components[i]->ExportData(ss);
-                    if ((i + 1) < (inst.components.size()))
-                    {
-                        ss << ",";
-                    }
-                    ss << "\n";
+                    JSON jo;
+                    c->ExportData(jo);
+                    comp.push_back(jo);
                 }
-                ss << "\t\t\t\t]\n\t\t\t";
             }
-
-            ss << "}";
-            if ((j + 1) < mdl->instances.size())
-                ss << ",\n";
+            mdlo.push_back(insto);
         }
-        ss << "\n\t\t]";
-        if ((i + 1) < leveldata.level.models.size())
-            ss << ",\n";
+
     }
-
-    ss << "\n\t},\n\t\"pickups\": [";
-
-    for (int i = 0; i < 3; ++i)
+    auto& pickupo = root["pickups"];
+    for (int i = 0; i < 4; ++i)
     {
-        const char* const p = leveldata.level.pickupName[i];
+        JSON jo;
+        jo["instances"] = JSON::Array();
+        const char* const p = (i == 3 ? "cold____" : leveldata.level.pickupName[i]);
         if (strncmp(p, "gameboy_", 8) == 0)
         {
             // not real collectible
-            ss << "\n\t\t{\n\t\t\t\"type\": \"\", \"instances\":[]\n\t\t},";
+            jo["type"] = "";
+            pickupo.push_back(jo);
             continue;
         }
-
-        ss << "\n\t\t{\n\t\t\t\"type\": \"" << p << "\", \"instances\": [";
+        jo["type"] = p;
         if (auto it = std::find_if(
             leveldata.level.models.begin(),
             leveldata.level.models.end(),
@@ -1180,46 +1234,16 @@ void DumpObjects(FILE* f, sleveldata_t& leveldata)
         {
             for (auto& inst : (*it)->instances)
             {
-                ss << "\n\t\t\t\t["
-                    << std::to_string((int)(inst.position.x * -1000)) << ", "
-                    << std::to_string((int)(inst.position.y * -1000)) << ", "
-                    << std::to_string((int)(inst.position.z * 1000)) << "],";
+                jo["instances"].push_back({
+                    (int)(inst.position.x * -1000),
+                    (int)(inst.position.y * -1000),
+                    (int)(inst.position.z * 1000)
+                });
             }
-            if ((*it)->instances.size() > 0)
-                ss.seekp(-1, std::ios_base::end);
         }
-        ss << "\n\t\t\t]\n\t\t},";
+        pickupo.push_back(jo);
     }
-
-    {
-        ss << "\n\t\t{\n\t\t\t\"type\": \"cold____\", \"instances\": [";
-        if (auto it = std::find_if(
-            leveldata.level.models.begin(),
-            leveldata.level.models.end(),
-            [](std::shared_ptr<Model> m)
-            {
-                return m->name == "cold____";
-            });
-            it != leveldata.level.models.end()
-        )
-        {
-            for (auto& inst : (*it)->instances)
-            {
-                ss << "\n\t\t\t\t["
-                    << std::to_string((int)(inst.position.x * -1000)) << ", "
-                    << std::to_string((int)(inst.position.y * -1000)) << ", "
-                    << std::to_string((int)(inst.position.z * 1000)) << "],";
-            }
-            if ((*it)->instances.size() > 0)
-                ss.seekp(-1, std::ios_base::end);
-        }
-        ss << "\n\t\t\t]\n\t\t}";
-    }
-
-    ss << "\n\t]\n}";
-    const std::string fileStr = ss.str();
-    fwrite(fileStr.data(), fileStr.length(), 1, f);
-    fclose(f);
+    root.WriteToFile(path, /*humanReadable*/ true);
 }
 
 void ExportModel(FILE* f, std::shared_ptr<Model> mdl)

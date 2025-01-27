@@ -5,6 +5,8 @@
 #include "script.h"
 #include "cmesh.h"
 #include "components/components.h"
+#include "components/EndTVComponent.h"
+#include "components/LevelTVComponent.h"
 
 #include <glm/glm.hpp>
 #include <glm/ext/scalar_constants.hpp> // glm::pi
@@ -302,7 +304,7 @@ void ReadObjectGeometry(file_t& dfx, level_t& level, levelext_t& levelData, addr
 	addr_t modelNameAddr = dfx.Read<addr_t>(0x24);
 	char name[9] = { 0 };
 	memcpy(name, dfx.ptrAt<byte>(modelNameAddr), 8);
-	//printf("Reading %s model data...\n", name);
+	printf("Reading %s model data...\n", name);
 	model->name = name;
 
 	if (model->name == "proxsig_")
@@ -356,13 +358,19 @@ void ReadObjectInstance(file_t& dfx, level_t& level, levelext_t& levelData, addr
 		++modelIndex;
 	}
 
-	if (modelIndex == level.models.size())
-	{
-		ReadObjectGeometry(dfx, level, levelData, modelAddr);
-	}
+	//if (modelIndex == level.models.size())
+	//{
+	//	ReadObjectGeometry(dfx, level, levelData, modelAddr);
+	//}
 	
 	constexpr float c_PI_2_FROM_1024 = glm::pi<float>() / 2048.f;
-	glm::vec3 rot = { dfx.Read<i16>(10) * c_PI_2_FROM_1024, dfx.Read<i16>(12) * -c_PI_2_FROM_1024, dfx.Read<i16>(14) * c_PI_2_FROM_1024 };
+	glm::vec3 rot = { -dfx.Read<i16>(8) * c_PI_2_FROM_1024, dfx.Read<i16>(12) * -c_PI_2_FROM_1024, dfx.Read<i16>(10) * -c_PI_2_FROM_1024 };
+	if (dfx.Read<i16>(14) != 0)
+		printf("Oops: %x (%s)\n", dfx.Read<i16>(14), level.models[modelIndex]->name.c_str());
+	if (rot.x != 0)
+		printf("OopsX: %f (%s)\n", rot.x, level.models[modelIndex]->name.c_str());
+	if (rot.z != 0)
+		printf("OopsZ: %f (%s)\n", rot.z, level.models[modelIndex]->name.c_str());
 	glm::vec3 pos = { -dfx.Read<i16>(16) * 0.001f, -dfx.Read<i16>(20) * 0.001f, dfx.Read<i16>(18) * 0.001f };
 	level.models[modelIndex]->instances.push_back({ pos, rot, true, instanceAddr + dfx.baseOffset, dfx.Read<u32>(28),
 		{
@@ -376,6 +384,108 @@ void ReadObjectInstance(file_t& dfx, level_t& level, levelext_t& levelData, addr
 	dfx.pop();
 
 	ReadComponents(dfx, level, *level.models[modelIndex]);
+
+	if ((level.models[modelIndex]->name == "lvltv___" && level.models[modelIndex]->instances.back().instanceData[2] == 0))
+	{
+		auto& inst = level.models[modelIndex]->instances.back();
+		if (auto it = std::find_if(level.models.begin(), level.models.end(), [](std::shared_ptr<Model> model)
+			{
+				return model->name == "etvbutn_";
+			}); it != level.models.end())
+		{
+			(*it)->instances.push_back({
+				inst.position,
+				inst.rotation,
+				true,
+				inst.address | 0x8000'0000,
+				0
+			});
+		}
+
+		const static std::unordered_map<std::string, int> remData = {
+			{ "circuit5", 2 },
+			{ "circuit9", 3 },
+			{ "horror2", 3 },
+			{ "horror4", 3 },
+			{ "horror5", 1 },
+			{ "kungfu1", 3 },
+			{ "kungfu02", 2 },
+			{ "looney30", 3 },
+			{ "looney69", 2 },
+			{ "prehst1", 2 },
+			{ "prehst2", 3 },
+			{ "prehst3", 1 },
+			{ "scifi10", 2 },
+			{ "scifi14", 3 },
+			{ "rezop1", 2 },
+			{ "rezop3", 1 },
+			{ "train30", 3 }
+		};
+
+		if (auto ptr = inst.GetComponent<LevelTVComponent>())
+		{
+			const std::string id = ptr->levelType + std::to_string(ptr->levelNum);
+			if (auto tvit = remData.find(id); tvit != remData.end())
+			{
+				if (auto it = std::find_if(level.models.begin(), level.models.end(), [](std::shared_ptr<Model> model)
+					{
+						return model->name == "remrlow_";
+					}); it != level.models.end())
+				{
+					if (tvit->second == 1 || tvit->second == 3)
+						(*it)->instances.push_back({
+							inst.position + glm::vec3{0.f, -1.5f, 0.f},
+							inst.rotation,
+							true,
+							inst.address | 0x8000'0000,
+							0
+							});
+
+					if (tvit->second > 1)
+					{
+						auto dir = glm::vec3{ cosf(inst.rotation.y) / (4.f - tvit->second), 0, sinf(inst.rotation.y) / (4.f - tvit->second) } / 3.f;
+						(*it)->instances.push_back({
+							inst.position + glm::vec3{0.f, -1.5f, 0.f} - dir,
+							inst.rotation,
+							true,
+							inst.address | 0x8000'0000,
+							0
+							});
+						(*it)->instances.push_back({
+							inst.position + glm::vec3{0.f, -1.5f, 0.f} + dir,
+							inst.rotation,
+							true,
+							inst.address | 0x8000'0000,
+							0
+							});
+					}
+				}
+			}
+		}
+	}
+	
+	if (level.models[modelIndex]->name.find("plaq") != std::string::npos)
+	{
+		level.models[modelIndex]->instances.back().position += glm::vec3{0, -0.2f, 0};
+	}
+
+	if (level.models[modelIndex]->name.starts_with("endtv") && static_cast<EndTVComponent*>(level.models[modelIndex]->instances.back().components[0].get())->condition == 0)
+	{
+		if (auto it = std::find_if(level.models.begin(), level.models.end(), [](std::shared_ptr<Model> model)
+			{
+				return model->name == "etvbutn_";
+			}); it != level.models.end())
+		{
+			auto& inst = level.models[modelIndex]->instances.back();
+			(*it)->instances.push_back({
+				inst.position,
+				inst.rotation,
+				true,
+				inst.address | 0x8000'0000,
+				0
+				});
+		}
+	}
 }
 
 struct GexTex_t
@@ -910,6 +1020,13 @@ bool LoadLevel(const std::string& filepath, level_t& level)
 
 	size_t currModelIndex = level.models.size();
 
+	dfx.seek(levelData.modelAddress);
+	while (dfx.Read<addr_t>(0) != levelData.modelAddress)
+	{
+		ReadObjectGeometry(dfx, level, levelData, dfx.Read<addr_t>(0, true));
+	}
+	dfx.pop();
+
 	for (u32 i = 0; i < levelData.nObjects; ++i)
 	{
 		ReadObjectInstance(dfx, level, levelData, levelData.objAddress + 0x30 * i);
@@ -977,6 +1094,13 @@ bool LoadLevel(const std::string& filepath, level_t& level)
 		else
 			++it;
 	}
+
+	for(auto& m : level.models)
+		for (auto& i : m->instances)
+		{
+			i.oposition = i.position;
+			i.orotation = i.rotation;
+		}
 
 	return true;
 }

@@ -11,6 +11,7 @@
 #include "TimerComponent.h"
 
 #include "../level.h"
+#include "../json.h"
 
 #include <imgui/imgui.h>
 
@@ -28,7 +29,13 @@ struct BasicValueComponent : public IComponent
 		else
 			value = file.ReadAt<T>(data);
 	}
-	virtual void ExportData(std::stringstream& ss) override {}
+	virtual void ExportData(JSON& object) override
+	{
+		object["component_type"] = "value_component";
+		object["key"] = name;
+		object["value"] = value;
+
+	}
 	virtual void RenderGUI(level_t& level, void* textureSheet) override
 	{
 		if (hex)
@@ -53,7 +60,7 @@ struct IdentifierComponent : public IComponent
 		id = file.ReadAt<unsigned int>(data);
 	}
 
-	virtual void ExportData(std::stringstream& ss) override {}
+	virtual void ExportData(JSON& object) override {}
 	virtual void RenderGUI(level_t& level, void* textureSheet) override
 	{
 		if (id != 0)

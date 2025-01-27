@@ -1,4 +1,5 @@
 #include "EndTVComponent.h"
+#include "../json.h"
 
 #include <imgui/imgui.h>
 
@@ -11,9 +12,10 @@ void EndTVComponent::ParseData(file_t& file, level_t& level, unsigned int data)
 	file.pop();
 }
 
-void EndTVComponent::ExportData(std::stringstream& ss)
+void EndTVComponent::ExportData(JSON& object)
 {
-	ss << "{ \"component_type\": \"end_tv\", \"remote_id\": " << remoteId << " }";
+	object["component_type"] = "end_tv";
+	object["remote_id"] = remoteId;
 }
 
 void EndTVComponent::RenderGUI(level_t& level, void* textureSheet)

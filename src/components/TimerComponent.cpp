@@ -1,5 +1,7 @@
 #include "TimerComponent.h"
 
+#include "../json.h"
+
 #include <imgui/imgui.h>
 
 void TimerComponent::ParseData(file_t& file, level_t& level, unsigned int data)
@@ -13,9 +15,11 @@ void TimerComponent::ParseData(file_t& file, level_t& level, unsigned int data)
 		missionTime = cutsceneTime = 0;
 }
 
-void TimerComponent::ExportData(std::stringstream& ss)
+void TimerComponent::ExportData(JSON& object)
 {
-	ss << "{ \"component_type\": \"timer\", \"mission_time\": " << std::to_string(missionTime) << ", \"cutscene_time\": " << std::to_string(cutsceneTime) << " }";
+	object["component_type"] = "timer";
+	object["mission_type"] = missionTime;
+	object["cutscene_time"] = cutsceneTime;
 }
 
 void TimerComponent::RenderGUI(level_t& level, void* textureSheet)

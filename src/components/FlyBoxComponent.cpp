@@ -1,6 +1,7 @@
 #include "FlyBoxComponent.h"
 #include "../level.h"
 #include "../script.h"
+#include "../json.h"
 
 #include <imgui/imgui.h>
 
@@ -28,9 +29,11 @@ void FlyBoxComponent::ParseData(file_t& file, level_t& level, unsigned int data)
 	}
 }
 
-void FlyBoxComponent::ExportData(std::stringstream& ss)
+void FlyBoxComponent::ExportData(JSON& object)
 {
-	ss << "{ \"component_type\": \"fly_box\", \"type\": " << std::to_string(flyBoxType) << ", \"respawns\": " << (respawns ? "true" : "false") << " }";
+	object["component_type"] = "fly_box";
+	object["type"] = flyBoxType;
+	object["respawns"] = respawns;
 }
 
 void FlyBoxComponent::RenderGUI(level_t& level, void* textureSheet)

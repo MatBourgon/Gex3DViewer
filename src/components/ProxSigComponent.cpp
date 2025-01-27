@@ -1,5 +1,6 @@
 #include "ProxSigComponent.h"
 #include "../script.h"
+#include "../json.h"
 
 #include <imgui/imgui.h>
 
@@ -21,16 +22,17 @@ void ProxSigComponent::ParseData(file_t& file, level_t& level, unsigned int data
 	file.pop();
 }
 
-void ProxSigComponent::ExportData(std::stringstream& ss)
+void ProxSigComponent::ExportData(JSON& object)
 {
-	ss << "{ \"component_type\": \"proxsig\", \"proxies\": [";
-	for (size_t i = 0; i < proxies.size(); ++i)
+	object["component_type"] = "proxsig";
+	object["proxies"] = JSON::Array();
+	for (auto& p : proxies)
 	{
-		ss << "{ \"range\": [" << std::to_string(proxies[i].rangeMin) << ", " << std::to_string(proxies[i].rangeMax) << "] }"; // todo: add script
-		if ((i + 1) < proxies.size())
-			ss << ", ";
+		JSON jo;
+		jo["range"] = { p.rangeMin, p.rangeMax };
+		// todo: add script
+		object["proxies"].push_back(jo);
 	}
-	ss << " ] }";
 }
 
 void ProxSigComponent::RenderGUI(level_t& level, void* textureSheet)

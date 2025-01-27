@@ -1,5 +1,6 @@
 #include "LevelTVComponent.h"
 #include "../cmesh.h"
+#include "../json.h"
 
 #include <imgui/imgui.h>
 
@@ -12,13 +13,15 @@ void LevelTVComponent::ParseData(file_t& file, level_t& level, unsigned int data
 	file.pop();
 }
 
-void LevelTVComponent::ExportData(std::stringstream& ss)
+void LevelTVComponent::ExportData(JSON& object)
 {
 	const char* c_ICON_NAME[] = {
 		NULL, NULL, NULL, NULL, // these should never happen
 		"GILLIGEX", "MOOSHOO", "GEXZILLA", "REZOPOLIS", "PREHISTORY", "TOON", "CIRCUIT", "SCREAM", "ROCKET", "KUNGFU", "CHANNELZ", "BONUS"
 	};
-	ss << "{ \"component_type\": \"level_tv\", \"level_id\": \"" << levelType << std::to_string(levelNum) << "\", \"tv_icon\": \"" << c_ICON_NAME[screenType] << "\" }";
+	object["component_type"] = "level_tv";
+	object["level_id"] = levelType + std::to_string(levelNum);
+	object["tv_icon"] = c_ICON_NAME[screenType];
 }
 
 void LevelTVComponent::RenderGUI(level_t& level, void* textureSheet)

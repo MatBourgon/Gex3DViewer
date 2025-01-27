@@ -30,5 +30,5 @@ struct PathComponent : public IComponent
 	Path path;
 
 	virtual void ParseData(file_t& file, level_t& level, unsigned int data) override;
-	virtual void ExportData(std::stringstream& ss) override;
+	virtual void ExportData(JSON& object) override;
 };
