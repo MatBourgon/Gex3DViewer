@@ -399,7 +399,7 @@ std::shared_ptr<globj_t> createobj(std::shared_ptr<Model> model)
         {
             auto& v = model->vertices[p.vertex[i]];
 
-            ptr->vertices.push_back({ {v.x / 1000.f, v.y / 1000.f, v.z / 1000.f}, {v.r / 255.f, v.g / 255.f, v.b / 255.f, v.a / 255.f}, p.uvs[i] });
+            ptr->vertices.push_back({ {v.x / 1000.f, v.y / 1000.f, v.z / 1000.f}, {v.r / 255.f, v.g / 255.f, v.b / 255.f, v.a / 255.f}, p.uvfs[i] });
             if (p.materialID == 0xFFFF'FFFF)
             {
                 if ((p.flags & 0x2) == 0 && model->name != "@Level")
@@ -652,20 +652,20 @@ int main()
                     {
                         if (inst.isVisible)
                         {
-                            if (leveldata.level.models[i]->name == "qmark___"
-                                || leveldata.level.models[i]->name == "dish____"
-                                || leveldata.level.models[i]->name == "satdish_")
-                            {
-                                inst.rotation.y -= glm::pi<float>() / 180.f;
-                            }
-                            else if (leveldata.level.models[i]->name == "remrlow_"
-                                || leveldata.level.models[i]->name == "remsilv_"
-                                || leveldata.level.models[i]->name == "remgold_"
-                                || leveldata.level.models[i]->name.find("plaq") != std::string::npos)
-                            {
-                                inst.rotation.y += glm::pi<float>() / 180.f;
-                                inst.position.y = inst.oposition.y + sinf(time) / 25.f;
-                            }
+                            //if (leveldata.level.models[i]->name == "qmark___"
+                            //    || leveldata.level.models[i]->name == "dish____"
+                            //    || leveldata.level.models[i]->name == "satdish_")
+                            //{
+                            //    inst.rotation.y -= glm::pi<float>() / 180.f;
+                            //}
+                            //else if (leveldata.level.models[i]->name == "remrlow_"
+                            //    || leveldata.level.models[i]->name == "remsilv_"
+                            //    || leveldata.level.models[i]->name == "remgold_"
+                            //    || leveldata.level.models[i]->name.find("plaq") != std::string::npos)
+                            //{
+                            //    inst.rotation.y += glm::pi<float>() / 180.f;
+                            //    inst.position.y = inst.oposition.y + sinf(time) / 25.f;
+                            //}
                             mdls[i]->draw(program, leveldata, inst, leveldata.level.models[i]->name);
                         }
                     }
@@ -707,9 +707,9 @@ int main()
             ImGui::Checkbox("Toggle Objects?", &noObjects);
             ImGui::Checkbox("Toggle Billboarding?", &enableBillboarding);
             ImGui::Checkbox("Enable Triggers (On Load)?", &setTriggersVisible);
-            if (ImGui_CenteredButton("Open Level (*.dfx)"))
+            if (ImGui_CenteredButton("Open Level (*.drm)"))
             {
-                auto path = OpenLoadPrompt("Gex 3D Level File (*.dfx)\0*.dfx\0All files (*.*)\0*.*\0");
+                auto path = OpenLoadPrompt("Gex 3D Level File (*.drm)\0*.drm\0All files (*.*)\0*.*\0");
                 if (!path.empty())
                     OpenLevel(path.c_str(), leveldata);
             }
@@ -798,7 +798,7 @@ int main()
                                     {
                                         const auto& vert = v[p.vertex[i]];
 
-                                        vertices.push_back({ vert.x / -1000.f, vert.z / 1000.f, vert.y / 1000.f, vert.r, vert.g, vert.b, p.uvs[i][0],  1.f - p.uvs[i][1] });
+                                        vertices.push_back({ vert.x / -1000.f, vert.z / 1000.f, vert.y / 1000.f, vert.r, vert.g, vert.b, p.uvfs[i][0],  1.f - p.uvfs[i][1] });
                                     }
                                 }
                             }
@@ -1272,7 +1272,7 @@ void ExportModel(FILE* f, std::shared_ptr<Model> mdl)
         {
             const auto& vert = v[p.vertex[i]];
 
-            vertices.push_back({ vert.x / -1000.f, vert.z / 1000.f, vert.y / 1000.f, vert.r, vert.g, vert.b, p.uvs[i][0],  1.f - p.uvs[i][1] });
+            vertices.push_back({ vert.x / -1000.f, vert.z / 1000.f, vert.y / 1000.f, vert.r, vert.g, vert.b, p.uvfs[i][0],  1.f - p.uvfs[i][1] });
         }
     }
 

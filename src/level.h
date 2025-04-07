@@ -61,14 +61,21 @@ struct Model
 		unsigned short normalId;
 		unsigned char r, g, b, a;
 	};
+	struct uv_t
+	{
+		unsigned char x, y;
+	};
 	struct polygon_t
 	{
 		size_t vertex[3];
 		unsigned int materialID;
 		unsigned short flags;
-		glm::vec2 uvs[3];
+		//glm::vec2 uvs[3];
+		uv_t uvs[3];
+		glm::vec2 uvfs[3];
 		unsigned char optColors[4] = { 0, 0, 0, 0 };
 		bool isTrigger = false;
+		unsigned short clut = 0, tpage = 0;
 	};
 	const unsigned int addr;
 	std::string name;

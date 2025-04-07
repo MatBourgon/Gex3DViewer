@@ -29,4 +29,16 @@ namespace ECustomImageType
 	};
 }
 
-ImagePacker::ImageInformation_t* FindImageInfoById(ImagePacker::ImageInformationList& list, int id);
+ImagePacker::ImageInformation_t* FindImageInfoById(ImagePacker::ImageInformationList& list, unsigned int id);
+
+struct TextureInfo
+{
+	int x, y, w, h;
+	int left;
+	int right;
+	int north;
+	int south;
+	unsigned short clut, tpage;
+};
+inline std::vector<TextureInfo> texInfo = {};
+#define MAKE_CLT_KEY(CLUT, TPAGE) ((((u32)(CLUT)) << 16) | (u32)(TPAGE))

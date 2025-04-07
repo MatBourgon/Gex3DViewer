@@ -87,10 +87,16 @@ void ReadVertices(file_t& dfx, level_t& level, levelext_t& levelData, geo_t& geo
 	dfx.pop();
 }
 
+struct mapuv
+{
+	Model::uv_t uv[3];
+};
+std::unordered_map<unsigned int, std::vector<mapuv>> m_MaterialMap;
+
 void ReadPolygons(file_t& dfx, level_t& level, levelext_t& levelData, geo_t& geo, std::shared_ptr<Model> model)
 {
 	dfx.seek(geo.polygonAddress);
-	bool hasTexturedFace = geo.isLevel;
+	bool hasTexturedFace = true;// geo.isLevel;
 	for (u32 i = 0; i < geo.polygonCount; ++i)
 	{
 		Model::polygon_t polygon;
@@ -104,13 +110,20 @@ void ReadPolygons(file_t& dfx, level_t& level, levelext_t& levelData, geo_t& geo
 		{
 			addr_t materialAddr = dfx.Read<addr_t>(stride * i + 0x10);
 
-			if (materialAddr != 0xFFFF && (polygon.flags & 0x80) != 0x80)
+			if (materialAddr != 0xFFFF && (polygon.flags & 0x80) != 0x80 /*&& (polygon.flags & 0x2) != 0x2*/)
 			{
 				dfx.seek(materialAddr);
-				polygon.uvs[0] = { dfx.Read<byte>(0) / 255.f, dfx.Read<byte>(1) / 255.f };
-				polygon.uvs[1] = { dfx.Read<byte>(4) / 255.f, dfx.Read<byte>(5) / 255.f };
-				polygon.uvs[2] = { dfx.Read<byte>(8) / 255.f, dfx.Read<byte>(9) / 255.f };
+				polygon.uvs[0] = { dfx.Read<byte>(0), dfx.Read<byte>(1) };
+				polygon.uvs[1] = { dfx.Read<byte>(4), dfx.Read<byte>(5) };
+				polygon.uvs[2] = { dfx.Read<byte>(8), dfx.Read<byte>(9) };
 				polygon.materialID = dfx.Read<u16>(6) % 0x1000;
+				polygon.clut = dfx.Read<unsigned short>(2);
+				polygon.tpage = dfx.Read<unsigned short>(6);
+				m_MaterialMap[MAKE_CLT_KEY(polygon.clut, polygon.tpage)].push_back({
+					polygon.uvs[0],
+					polygon.uvs[1],
+					polygon.uvs[2]
+				});
 				dfx.pop();
 			}
 			else
@@ -119,46 +132,46 @@ void ReadPolygons(file_t& dfx, level_t& level, levelext_t& levelData, geo_t& geo
 				polygon.uvs[1].x = polygon.uvs[1].y = 0;
 				polygon.uvs[2].x = polygon.uvs[2].y = 0;
 				polygon.materialID = 0xFFFFFFFF;
-				if (materialAddr != 0 && materialAddr < maxRange)
-				{
-					if (auto info = FindImageInfoById(level.list, ECustomImageType::INFO_EMPTY))
-					{
-						const float x = (info->x + info->width / 2) / (float)level.sheet.w;
-						const float y = (info->y + info->height / 2) / (float)level.sheet.h;
-						polygon.uvs[0].x = polygon.uvs[1].x = polygon.uvs[2].x = x;
-						polygon.uvs[0].y = polygon.uvs[1].y = polygon.uvs[2].y = y;
-					}
-					polygon.materialID = ECustomImageType::INFO_EMPTY;
-					polygon.isTrigger = true;
-
-					if (!level.signals.contains(materialAddr))
-					{
-						level.signals[materialAddr] = {};
-						ParseCommands(level, dfx, materialAddr, level.signals[materialAddr].commands);
-						if (!level.signals[materialAddr].commands.empty())
-							level.signals[materialAddr].commands[0] += "#Trigger";
-						bool print = false;
-						for (auto& c : level.signals[materialAddr].commands)
-							if (c.find("Unknown") != std::string::npos)
-							{
-								print = true;
-								break;
-							}
-						if (print)
-						{
-							printf("Script? : %x\n", materialAddr);
-							for (auto& c : level.signals[materialAddr].commands)
-								printf("%s\n", c.c_str());
-						}
-					}
-				}
+				//if (materialAddr != 0 && materialAddr < maxRange)
+				//{
+				//	if (auto info = FindImageInfoById(level.list, ECustomImageType::INFO_EMPTY))
+				//	{
+				//		const float x = (info->x + info->width / 2) / (float)level.sheet.w;
+				//		const float y = (info->y + info->height / 2) / (float)level.sheet.h;
+				//		polygon.uvs[0].x = polygon.uvs[1].x = polygon.uvs[2].x = x;
+				//		polygon.uvs[0].y = polygon.uvs[1].y = polygon.uvs[2].y = y;
+				//	}
+				//	polygon.materialID = ECustomImageType::INFO_EMPTY;
+				//	polygon.isTrigger = true;
+				//
+				//	if (!level.signals.contains(materialAddr))
+				//	{
+				//		level.signals[materialAddr] = {};
+				//		ParseCommands(level, dfx, materialAddr, level.signals[materialAddr].commands);
+				//		if (!level.signals[materialAddr].commands.empty())
+				//			level.signals[materialAddr].commands[0] += "#Trigger";
+				//		bool print = false;
+				//		for (auto& c : level.signals[materialAddr].commands)
+				//			if (c.find("Unknown") != std::string::npos)
+				//			{
+				//				print = true;
+				//				break;
+				//			}
+				//		if (print)
+				//		{
+				//			printf("Script? : %x\n", materialAddr);
+				//			for (auto& c : level.signals[materialAddr].commands)
+				//				printf("%s\n", c.c_str());
+				//		}
+				//	}
+				//}
 			}
 		}
 		else
 		{
-			if ((polygon.flags & 0x02) == 0x02)
+			if ((polygon.flags & 0x02) == 0x02 /*&& dfx.ReadAt<u32>(geo.textureAnimAddress) <= 1*/)
 			{
-				hasTexturedFace = true;
+				//hasTexturedFace = true;
 				addr_t materialAddr = dfx.Read<addr_t>(stride * i + 8);
 				dfx.seek(materialAddr);
 				//polygon.materialID = dfx.Read<u16>(6) % 0x1000;
@@ -183,9 +196,16 @@ void ReadPolygons(file_t& dfx, level_t& level, levelext_t& levelData, geo_t& geo
 					polygon.materialID = dfx.Read<u16>(6) % 0x1000;
 				}
 
-				polygon.uvs[0] = { dfx.Read<byte>(0) / 255.f, dfx.Read<byte>(1) / 255.f };
-				polygon.uvs[1] = { dfx.Read<byte>(4) / 255.f, dfx.Read<byte>(5) / 255.f };
-				polygon.uvs[2] = { dfx.Read<byte>(8) / 255.f, dfx.Read<byte>(9) / 255.f };
+				polygon.uvs[0] = { dfx.Read<byte>(0), dfx.Read<byte>(1) };
+				polygon.uvs[1] = { dfx.Read<byte>(4), dfx.Read<byte>(5) };
+				polygon.uvs[2] = { dfx.Read<byte>(8), dfx.Read<byte>(9) };
+				polygon.clut = dfx.Read<unsigned short>(2);
+				polygon.tpage = dfx.Read<unsigned short>(6);
+				m_MaterialMap[MAKE_CLT_KEY(polygon.clut, polygon.tpage)].push_back({
+					polygon.uvs[0],
+					polygon.uvs[1],
+					polygon.uvs[2]
+					});
 				
 				dfx.pop();
 			}
@@ -200,7 +220,7 @@ void ReadPolygons(file_t& dfx, level_t& level, levelext_t& levelData, geo_t& geo
 		}
 		model->polygons.push_back(polygon);
 	}
-	model->hasNoTextures = !hasTexturedFace;
+	//model->hasNoTextures = !hasTexturedFace;
 	dfx.pop();
 }
 
@@ -241,13 +261,20 @@ void ReadSkybox(file_t& dfx, level_t& level, levelext_t& levelData, geo_t& geo, 
 			addr_t materialAddress = dfx.Read<addr_t>(0, true);
 			u32 tempOffset = dfx.baseOffset;
 			dfx.seek(materialAddress);
-			poly.uvs[0].x = dfx.Read<byte>(0, true) / 255.f;
-			poly.uvs[0].y = dfx.Read<byte>(0, true) / 255.f;
-			poly.uvs[1].x = dfx.Read<byte>(2, true) / 255.f;
-			poly.uvs[1].y = dfx.Read<byte>(0, true) / 255.f;
+			poly.clut = dfx.Read<unsigned short>(2);
+			poly.tpage = dfx.Read<unsigned short>(6);
+			poly.uvs[0].x = dfx.Read<byte>(0, true);
+			poly.uvs[0].y = dfx.Read<byte>(0, true);
+			poly.uvs[1].x = dfx.Read<byte>(2, true);
+			poly.uvs[1].y = dfx.Read<byte>(0, true);
 			poly.materialID = dfx.Read<u16>(0, true) % 0x1000;
-			poly.uvs[2].x = dfx.Read<byte>(0, true) / 255.f;
-			poly.uvs[2].y = dfx.Read<byte>(0, true) / 255.f;
+			poly.uvs[2].x = dfx.Read<byte>(0, true);
+			poly.uvs[2].y = dfx.Read<byte>(0, true);
+			m_MaterialMap[MAKE_CLT_KEY(poly.clut, poly.tpage)].push_back({
+				poly.uvs[0],
+				poly.uvs[1],
+				poly.uvs[2]
+				});
 			dfx.pop();
 
 			//if (auto info = FindImageInfoById(level.list, poly.materialID))
@@ -365,12 +392,6 @@ void ReadObjectInstance(file_t& dfx, level_t& level, levelext_t& levelData, addr
 	
 	constexpr float c_PI_2_FROM_1024 = glm::pi<float>() / 2048.f;
 	glm::vec3 rot = { -dfx.Read<i16>(8) * c_PI_2_FROM_1024, dfx.Read<i16>(12) * -c_PI_2_FROM_1024, dfx.Read<i16>(10) * -c_PI_2_FROM_1024 };
-	if (dfx.Read<i16>(14) != 0)
-		printf("Oops: %x (%s)\n", dfx.Read<i16>(14), level.models[modelIndex]->name.c_str());
-	if (rot.x != 0)
-		printf("OopsX: %f (%s)\n", rot.x, level.models[modelIndex]->name.c_str());
-	if (rot.z != 0)
-		printf("OopsZ: %f (%s)\n", rot.z, level.models[modelIndex]->name.c_str());
 	glm::vec3 pos = { -dfx.Read<i16>(16) * 0.001f, -dfx.Read<i16>(20) * 0.001f, dfx.Read<i16>(18) * 0.001f };
 	level.models[modelIndex]->instances.push_back({ pos, rot, true, instanceAddr + dfx.baseOffset, dfx.Read<u32>(28),
 		{
@@ -401,7 +422,7 @@ void ReadObjectInstance(file_t& dfx, level_t& level, levelext_t& levelData, addr
 				0
 			});
 		}
-
+	
 		const static std::unordered_map<std::string, int> remData = {
 			{ "circuit5", 2 },
 			{ "circuit9", 3 },
@@ -421,7 +442,7 @@ void ReadObjectInstance(file_t& dfx, level_t& level, levelext_t& levelData, addr
 			{ "rezop3", 1 },
 			{ "train30", 3 }
 		};
-
+	
 		if (auto ptr = inst.GetComponent<LevelTVComponent>())
 		{
 			const std::string id = ptr->levelType + std::to_string(ptr->levelNum);
@@ -440,7 +461,7 @@ void ReadObjectInstance(file_t& dfx, level_t& level, levelext_t& levelData, addr
 							inst.address | 0x8000'0000,
 							0
 							});
-
+	
 					if (tvit->second > 1)
 					{
 						auto dir = glm::vec3{ cosf(inst.rotation.y) / (4.f - tvit->second), 0, sinf(inst.rotation.y) / (4.f - tvit->second) } / 3.f;
@@ -468,7 +489,7 @@ void ReadObjectInstance(file_t& dfx, level_t& level, levelext_t& levelData, addr
 	{
 		level.models[modelIndex]->instances.back().position += glm::vec3{0, -0.2f, 0};
 	}
-
+	
 	if (level.models[modelIndex]->name.starts_with("endtv") && static_cast<EndTVComponent*>(level.models[modelIndex]->instances.back().components[0].get())->condition == 0)
 	{
 		if (auto it = std::find_if(level.models.begin(), level.models.end(), [](std::shared_ptr<Model> model)
@@ -954,6 +975,231 @@ std::string GetLevelName(const std::string& levelStr, u32 dataOffsetRaw)
 	return "Unknown Level";
 }
 
+void BlitVRMTexture(file_t& file, level_t& level, TextureInfo& texInfo)
+{
+	int tPageX = (texInfo.tpage << 6) & 0x7C0;
+	int tPageY = ((texInfo.tpage << 4) & 0x0100) + ((texInfo.tpage >> 2) & 0x0200);
+	int tColorDepth = (texInfo.tpage >> 7) & 3;
+	int nColors = 0;
+	switch (tColorDepth)
+	{
+	case 0:
+		nColors = 16;
+		break;
+	case 1:
+		nColors = 256;
+		break;
+	}
+
+	std::vector<glm::vec4> colors;
+
+	if (tColorDepth != 2)
+	{
+		int clutX = ((texInfo.clut & 0x3f) << 4) % 512;
+		int clutY = texInfo.clut >> 6;
+		for (int i = 0; i < nColors; ++i)
+		{
+			unsigned short c = file.Read<u16>((clutY * 512 + clutX + i) * 2);
+
+			unsigned short alpha = c >> 15;
+			unsigned short blue = (((c << 1) >> 11) << 3);
+			unsigned short green = (((c << 6) >> 11) << 3);
+			unsigned short red = (((c << 11) >> 11) << 3);
+
+			alpha &= 0xFF;
+			blue &= 0xFF;
+			green &= 0xFF;
+			red &= 0xFF;
+
+			if (c) // if any color data, then musn't be invisible
+				alpha = 0xFF;
+
+			colors.push_back({
+				red / 255.f,
+				green / 255.f,
+				blue / 255.f,
+				alpha / 255.f,
+			});
+		}
+	}
+
+	texture_t tex;
+	tex.w = texInfo.w;
+	tex.h = texInfo.h;
+	std::vector<glm::vec4> pixels;
+
+	for (unsigned int y = 0; y < tex.h; ++y)
+	{
+		for (unsigned int x = 0; x < tex.w; ++x)
+		{
+			unsigned short pixel = 0;
+			switch (tColorDepth)
+			{
+				// 4 bit
+			case 0:
+				if (y + tPageY + texInfo.north < 512)
+				{
+					pixel = file.Read<unsigned short>(((texInfo.left / 4 + tPageX + x / 4) % 512 + 512 * (y + tPageY + texInfo.north)) * 2);
+				}
+
+				pixels.push_back(colors[pixel & 0xF]);
+				pixels.push_back(colors[(pixel >> 4) & 0xF]);
+				pixels.push_back(colors[(pixel >> 8) & 0xF]);
+				pixels.push_back(colors[(pixel >> 12) & 0xF]);
+				x += 3;
+				break;
+
+				// 8 bit
+			case 1:
+				if (y + tPageY + texInfo.north < 512)
+				{
+					pixel = file.Read<unsigned short>(((texInfo.left / 2 + tPageX + x / 2) % 512 + 512 * (y + tPageY + texInfo.north)) * 2);
+				}
+				pixels.push_back(colors[pixel & 0xFF]);
+				pixels.push_back(colors[(pixel >> 8) & 0xFF]);
+				++x;
+				break;
+
+				// 16 bit/real mode
+			case 2:
+				if (y + tPageY + texInfo.north < 512)
+					pixel = file.Read<unsigned short>(((texInfo.left + tPageX + x) % 512 + 512 * (y + tPageY + texInfo.north)) * 2);
+
+				unsigned short alpha = 0xff;
+				unsigned short red = (pixel << 3) & 0xf8;
+				unsigned short green = (pixel >> 2) & 0xf8;
+				unsigned short blue = (pixel >> 7) & 0xf8;
+
+				pixels.push_back({
+					red / 255.f,
+					green / 255.f,
+					blue / 255.f,
+					alpha / 255.f,
+					});
+				break;
+			}
+		}
+	}
+
+	tex.pixels = new glm::vec4[pixels.size()];
+	memcpy(tex.pixels, pixels.data(), sizeof(glm::vec4)* pixels.size());
+
+	BlitTex(level.sheet, tex, texInfo.x, texInfo.y);
+	level.textures.push_back(tex);
+}
+
+void LoadPSXMaterials(const std::string& vrmPath, level_t& level)
+{
+	file_t vrm;
+	if (!ReadFile(vrmPath, vrm)) return;
+	vrm.baseOffset = 20;
+
+	texInfo.clear();
+
+	for (auto& materialEntry : m_MaterialMap)
+	{
+		unsigned short tpage = materialEntry.first			& 0xFFFF;
+		unsigned short clut = (materialEntry.first >> 16)	& 0xFFFF;
+
+		float left = 1, north = 0;
+		float right = 1, south = 0;
+
+		std::vector<Model::uv_t> uvs;
+		for (auto& uv : materialEntry.second)
+		{
+			uvs.push_back(uv.uv[0]);
+			uvs.push_back(uv.uv[1]);
+			uvs.push_back(uv.uv[2]);
+		}
+
+		std::sort(uvs.begin(), uvs.end(),
+			[](Model::uv_t& left, Model::uv_t& right)
+			{
+				return left.x < right.x;
+			});
+
+		left = uvs.front().x;
+		right = uvs.back().x;
+
+		std::sort(uvs.begin(), uvs.end(),
+			[](Model::uv_t& left, Model::uv_t& right)
+			{
+				return left.y < right.y;
+			});
+
+		north = uvs.front().y;
+		south = uvs.back().y;
+
+		auto _abs = [](unsigned int n) -> int
+			{
+				if ((int)n < 0)
+					return -(int)n;
+				return n;
+			};
+
+		level.list.push_back({
+			(int)(_abs(right - left) + 1),
+			(int)(_abs(south - north) + 1),
+			(void*)texInfo.size()
+		});
+
+		texInfo.push_back({
+			0, 0, (int)(_abs(right - left) + 1), (int)(_abs(south - north) + 1),
+			_abs(left),
+			_abs(right),
+			_abs(north),
+			_abs(south),
+			clut, tpage
+		});
+	}
+
+	LoadCustomImages();
+	for (size_t i = 0; i < customImages.size(); ++i)
+		level.list.push_back({ (int)customImages[i].w, (int)customImages[i].h, (void*)(ECustomImageType::CUSTOM_IMAGE_BASE + i) });
+
+	if (int size = ImagePacker::GeneratePackedList(level.list, 256); size != 0)
+	{
+		printf("Sheet generated at %dx%d\n", size, size);
+		level.sheet = { (unsigned int)size, (unsigned int)size, new glm::vec4[size * size] };
+		if (level.sheet.pixels)
+		{
+			for (int y = 0; y < size; ++y)
+			{
+				for (int x = 0; x < size; ++x)
+				{
+					if (((x % 128) == (x % 64) && (y % 128) == (y % 64)) || ((x % 128) != (x % 64) && (y % 128) != (y % 64)))
+						level.sheet.pixels[x + y * size] = { 1, 0, 1, 1 };
+					else
+						level.sheet.pixels[x + y * size] = { 0.5, 0, 0.5, 1 };
+				}
+			}
+			for (auto& e : level.list)
+			{
+				if ((size_t)e.userdata >= ECustomImageType::CUSTOM_IMAGE_BASE)
+				{
+					BlitTex(level.sheet, customImages[(size_t)e.userdata - ECustomImageType::CUSTOM_IMAGE_BASE], e.x, e.y);
+				}
+				else
+				{
+					auto& ti = texInfo[(size_t)e.userdata];
+					ti.x = e.x;
+					ti.y = e.y;
+					BlitVRMTexture(vrm, level, ti);
+				}
+			}
+		}
+	}
+
+	for (size_t i = 0; i < customImages.size(); ++i)
+	{
+		if (auto info = FindImageInfoById(level.list, ECustomImageType::CUSTOM_IMAGE_BASE + i))
+		{
+			BlitTex(level.sheet, customImages[i], info->x, info->y);
+		}
+		level.textures.push_back(customImages[i]);
+	}
+}
+
 bool LoadLevel(const std::string& filepath, level_t& level)
 {
 	file_t dfx;
@@ -962,35 +1208,14 @@ bool LoadLevel(const std::string& filepath, level_t& level)
 
 	levelext_t levelData;
 
-	const std::string vfxPath = filepath.substr(0, filepath.find_last_of(".")) + ".vfx";
+	const std::string vfxPath = filepath.substr(0, filepath.find_last_of(".")) + ".vrm";
 	if (level.sheet.pixels)
 	{
 		delete[] level.sheet.pixels;
 		level.sheet.pixels = NULL;
 	}
 	level.list.clear();
-	if (GetTextureInformation(vfxPath, level.list))
-	{
-		if (int size = ImagePacker::GeneratePackedList(level.list, 256); size != 0)
-		{
-			printf("Sheet generated at %dx%d\n", size, size);
-			level.sheet = { (unsigned int)size, (unsigned int)size, new glm::vec4[size * size] };
-			if (level.sheet.pixels)
-			{
-				for (int y = 0; y < size; ++y)
-				{
-					for (int x = 0; x < size; ++x)
-					{
-						if (((x % 128) == (x % 64) && (y % 128) == (y % 64)) || ((x % 128) != (x % 64) && (y % 128) != (y % 64)))
-							level.sheet.pixels[x + y * size] = { 1, 0, 1, 1 };
-						else
-							level.sheet.pixels[x + y * size] = { 0.5, 0, 0.5, 1 };
-					}
-				}
-				LoadTextures(vfxPath, level);
-			}
-		}
-	}
+	m_MaterialMap.clear();
 
 	dfx.baseOffset = level.baseData = ((dfx.Read<u32>(0) + 0x200) >> 9) << 11;
 
@@ -1008,6 +1233,7 @@ bool LoadLevel(const std::string& filepath, level_t& level)
 	ReadLevelGeometry(dfx, level, levelData, dfx.Read<addr_t>(0));
 
 	std::shared_ptr<Model> misc = std::make_shared<Model>(0);
+	misc->name = "@CameraTarget";
 	CreateSpriteObject(level, misc, "@CameraTarget", ECustomImageType::INFO_UNKNOWN, 1);
 	level.models.push_back(misc);
 
@@ -1057,19 +1283,53 @@ bool LoadLevel(const std::string& filepath, level_t& level)
 	memcpy(level.pickupName[2], dfx.ptrAt<char>(0x104), 8);
 	level.pickupName[0][8] = level.pickupName[1][8] = level.pickupName[2][8] = '\0';
 
+	LoadPSXMaterials(vfxPath, level);
+
 	// Apply object UVs
 	for(auto& mdl : level.models)
 		for(auto& poly : mdl->polygons)
-			if (auto info = FindImageInfoById(level.list, poly.materialID))
+			if (auto info = FindImageInfoById(level.list, MAKE_CLT_KEY(poly.clut, poly.tpage)))
 			{
+				auto& ti = texInfo[(size_t)info->userdata];
 				for (int j = 0; j < 3; ++j)
 				{
-					poly.uvs[j].x *= info->width;
-					poly.uvs[j].y *= info->height;
-					poly.uvs[j].x += info->x;
-					poly.uvs[j].y += info->y;
-					poly.uvs[j].x /= (float)level.sheet.w;
-					poly.uvs[j].y /= (float)level.sheet.h;
+					// Shift uvs from texture page to texture range
+					poly.uvfs[j].x = (float)((poly.uvs[j].x - ti.left) * info->width);
+					poly.uvfs[j].y = (float)((poly.uvs[j].y - ti.north) * info->height);
+
+					// Scale by down to texture's size
+					poly.uvfs[j].x /= (ti.right - ti.left);
+					poly.uvfs[j].y /= (ti.south - ti.north);
+
+					// Move UVs to location in texture atlas
+					poly.uvfs[j].x += info->x;
+					poly.uvfs[j].y += info->y;
+
+					// Resize uvs to atlas' size
+					poly.uvfs[j].x /= (float)level.sheet.w;
+					poly.uvfs[j].y /= (float)level.sheet.h;
+				}
+			}
+			else
+			{
+				if (info = FindImageInfoById(level.list, poly.materialID))
+				{
+					// Apply custom sprite textures
+					for (int j = 0; j < 3; ++j)
+					{
+						poly.uvfs[j].x = ((poly.uvs[j].x * info->width) + info->x) / (float)level.sheet.w;
+						poly.uvfs[j].y = ((poly.uvs[j].y * info->height) + info->y) / (float)level.sheet.h;
+					}
+				}
+				else
+				{
+					for (int j = 0; j < 3; ++j)
+					{
+						poly.uvs[j].x *= 0;
+						poly.uvs[j].y *= 0;
+						poly.uvfs[j].x *= 0;
+						poly.uvfs[j].y *= 0;
+					}
 				}
 			}
 

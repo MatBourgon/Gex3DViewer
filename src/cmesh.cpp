@@ -160,11 +160,16 @@ void CreateSpriteObject(level_t& level, std::shared_ptr<Model> model, const std:
 	model->polygons.push_back({ {3, 2, 0}, customId, 0, {{0, 1}, {1, 1}, {0, 0}} });
 }
 
-ImagePacker::ImageInformation_t* FindImageInfoById(ImagePacker::ImageInformationList& list, int id)
+ImagePacker::ImageInformation_t* FindImageInfoById(ImagePacker::ImageInformationList& list, unsigned int id)
 {
 	if (auto it = std::find_if(list.begin(), list.end(), [id](const ImagePacker::ImageInformation_t& it)
 		{
-			return id == (int)it.userdata;
+			if ((size_t)it.userdata >= ECustomImageType::CUSTOM_IMAGE_BASE)
+				return (size_t)it.userdata == id;
+
+			auto& ti = texInfo[(size_t)it.userdata];
+			return MAKE_CLT_KEY(ti.clut, ti.tpage) == id;
+
 		}); it != list.end())
 	{
 		return &*it;
